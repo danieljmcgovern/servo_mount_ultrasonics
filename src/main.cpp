@@ -37,9 +37,6 @@ NewPing ultrasonic_rear(ULTRASONIC_PING_REAR, ULTRASONIC_ECHO_REAR, MAX_DISTANCE
 RecordedMeasurement measure_front[SWEEP_SEGMENTS];
 RecordedMeasurement measure_rear[SWEEP_SEGMENTS];
 
-RunningMedian subMeasurement_front(MEASUREMENT_COUNT); //RunningMedian used to get valid data point from MEASUREMENT_COUNT number of measurements at each servoPos
-RunningMedian subMeasurement_rear(MEASUREMENT_COUNT);
-
 float front_perp_dist; //to be used by computeAngle as the effective shortest distance to the wall. Using mode() to set this value.
 float rear_perp_dist;
 
@@ -63,19 +60,12 @@ void measurementSweep()
     //write the servo to each of its positions
     servo_front.write(measure_rear[i].servoPos);
     servo_rear.write(measure_rear[i].servoPos);
-    delay(SERVO_DELAY);           //time needed for servo to get to its position
-    subMeasurement_front.clear(); //clear the RunningMedian sub measurement of the previous servoPos data
-    subMeasurement_rear.clear();
-    //ping the ultrasonics MEASUREMENT_COUNT number of times (pinging multiple times and applying a median to deal with possible data outliers)
-    for (int j = 0; j < MEASUREMENT_COUNT; j++)
-    {
-      subMeasurement_front.add(ultrasonic_front.ping_cm());
-      delay(ULTRASONIC_DELAY);
-      subMeasurement_rear.add(ultrasonic_rear.ping_cm());
-      delay(ULTRASONIC_DELAY);
-    }
-    measure_front[i].distance = subMeasurement_front.getMedian(); //the distance value associated with that servo position
-    measure_rear[i].distance = subMeasurement_rear.getMedian();
+    delay(SERVO_DELAY);           //time needed for servo to get to its position    
+    
+    measure_front[i].distance = ultrasonic_front.ping_median()*343.0*pow(10,-4)*0.5; //the distance value associated with that servo position
+    delay(ULTRASONIC_DELAY); //how long of a delay???
+    measure_rear[i].distance = ultrasonic_rear.ping_median()*343.0*pow(10,-4)*0.5;
+    delay(ULTRASONIC_DELAY);
 
     //PRINT: print all the data in CSV form
     //Serial.print("servoPos: ");
@@ -198,5 +188,6 @@ void loop()
   median();
   Serial.print("Angle off parallel: ");
   Serial.println(computeAngle());
-  delay(60000);
+  delay(60000);  
+
 }
