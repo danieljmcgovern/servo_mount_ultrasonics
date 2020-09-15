@@ -1,11 +1,13 @@
 #include <Arduino.h>
 #include <NewPing.h>       //https://bitbucket.org/teckel12/arduino-new-ping/wiki/Home
 #include <Servo.h>         //https://www.arduino.cc/reference/en/libraries/servo/
-#include <RunningMedian.h> //https://playground.arduino.cc/Main/RunningMedian/
 #include <math.h>
 #include <QuickStats.h>
+#include "DHT.h"            //https://github.com/adafruit/DHT-sensor-library
+#include "Adafruit_Sensor.h"
 
 //PINS
+#define DHTPIN 3  //pin for DHT11 temperature&humidity sensor
 #define ULTRASONIC_PING_FRONT 4
 #define ULTRASONIC_ECHO_FRONT 5
 #define ULTRASONIC_PING_REAR 6
@@ -21,6 +23,9 @@
 #define SERVO_END 140                                           //the end of the sweep
 #define MEASUREMENT_COUNT 3                                     //number of measurements to take at each servo position
 #define SEGMENT_SIZE (SERVO_END - SERVO_START) / SWEEP_SEGMENTS //each servo write will move the servo this much
+
+#define DHTTYPE DHT11
+DHT dht(DHTPIN, DHTTYPE);
 
 struct RecordedMeasurement
 {
@@ -47,10 +52,27 @@ void setup()
   pinMode(SERVO_REAR, OUTPUT);
   servo_front.attach(SERVO_FRONT);
   servo_rear.attach(SERVO_REAR);
+  dht.begin();
+}
+
+float speedOfSound(float temp)
+{
+  return 331.0*sqrt(1.0+(temp/273.0)); //speed of sound (meters per sec) in air as fxn of temperature (celsius)
 }
 
 void measurementSweep()
 {
+  float t = dht.readTemperature();  //temperature in celsius from DHT11 sesnor
+  float v = speedOfSound(t);  //speed of sound in air at that temp (in m/s)
+  // Check if any reads failed and exit early (to try again).
+  if (isnan(t)) {
+    Serial.println(F("Failed to read from DHT sensor!"));
+    delay(5000);
+    return;
+  }
+  Serial.print(F("Temperature: "));
+  Serial.print(t);
+  Serial.println(F(" °C"));
 
   for (int i = 0; i < SWEEP_SEGMENTS; i++)
   {
@@ -60,11 +82,14 @@ void measurementSweep()
     //write the servo to each of its positions
     servo_front.write(measure_rear[i].servoPos);
     servo_rear.write(measure_rear[i].servoPos);
-    delay(SERVO_DELAY);           //time needed for servo to get to its position    
+    delay(SERVO_DELAY);           //time needed for servo to get to its position        
     
-    measure_front[i].distance = ultrasonic_front.ping_median()*343.0*pow(10,-4)*0.5; //the distance value associated with that servo position
-    delay(ULTRASONIC_DELAY); //how long of a delay???
-    measure_rear[i].distance = ultrasonic_rear.ping_median()*343.0*pow(10,-4)*0.5;
+       
+
+    //the distance value associated with that servo position
+    measure_front[i].distance = ultrasonic_front.ping_median()*v*pow(10,-4)*0.5; //10^-6 microsec to sec * 10^2 meters to cm = 10^-4
+    delay(ULTRASONIC_DELAY); //how long of a delay???                                 
+    measure_rear[i].distance = ultrasonic_rear.ping_median()*v*pow(10,-4)*0.5;
     delay(ULTRASONIC_DELAY);
 
     //PRINT: print all the data in CSV form
@@ -131,8 +156,8 @@ void mode()
 
   QuickStats stats;
 
-  front_mode = stats.mode(front, SWEEP_SEGMENTS, 0.1);    //third parameter is epsilon, TODO can it be used to merge two really close values?
-  rear_mode = stats.mode(rear, SWEEP_SEGMENTS, 0.1);
+  front_mode = stats.mode(front, SWEEP_SEGMENTS, 0.5);    //third parameter is epsilon, TODO can it be used to merge two really close values?
+  rear_mode = stats.mode(rear, SWEEP_SEGMENTS, 0.5);
 
   front_perp_dist = front_mode;
   rear_perp_dist = rear_mode;
